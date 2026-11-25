@@ -1,66 +1,107 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Sewa Perlengkapan Pesta/Event
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Aplikasi web untuk mengelola penyewaan perlengkapan pesta dan event (tenda, kursi, sound system, dekorasi, peralatan makan). Final Project Pemrograman Framework (Laravel 12).
 
-## About Laravel
+## Fitur
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+- Login petugas/admin (session, tanpa starter kit) dengan pembagian role
+- CRUD Kategori, Barang, dan Pelanggan
+- Transaksi sewa: banyak barang per nota, total dihitung otomatis, stok berkurang otomatis
+- Pengembalian per barang (bagus / rusak / hilang): denda keterlambatan, ganti rugi, stok kembali otomatis
+- Notifikasi sewa terlambat (banner, badge, tombol WhatsApp ke pelanggan)
+- Laporan Kerusakan (barang rusak/hilang per nota dan pelanggan)
+- Dashboard statistik yang mengonsumsi API internal
+- REST API (8 endpoint), dokumentasi di [API.md](API.md)
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+## Teknologi
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+Laravel 12, PHP >= 8.2, PostgreSQL, Blade + CSS biasa. Tanpa starter kit, Livewire, atau package tambahan.
 
-## Learning Laravel
+## Struktur Database
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+6 tabel: `users`, `categories`, `items`, `customers`, `rentals`, `rental_items`.
+Transaksi memakai pola header-detail: `rentals` (nota) + `rental_items` (barang yang disewa).
 
-You may also try the [Laravel Bootcamp](https://bootcamp.laravel.com), where you will be guided through building a modern Laravel application from scratch.
+## Hak Akses
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+| Role | Akses |
+|---|---|
+| admin | Semua fitur, termasuk kelola Kategori dan tambah/ubah/hapus Barang |
+| petugas | Pelanggan, Sewa, Pengembalian, Laporan Kerusakan, lihat daftar dan detail Barang |
 
-## Laravel Sponsors
+Pelanggan tidak punya akun. Petugas yang membuka halaman khusus admin akan mendapat 403.
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+## Cara Instalasi
 
-### Premium Partners
+Prasyarat: PHP >= 8.2, Composer, PostgreSQL, Git.
 
-- **[Vehikl](https://vehikl.com/)**
-- **[Tighten Co.](https://tighten.co)**
-- **[WebReinvent](https://webreinvent.com/)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel/)**
-- **[Cyber-Duck](https://cyber-duck.co.uk)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Jump24](https://jump24.co.uk)**
-- **[Redberry](https://redberry.international/laravel/)**
-- **[Active Logic](https://activelogic.com)**
-- **[byte5](https://byte5.de)**
-- **[OP.GG](https://op.gg)**
+1. Clone repository:
+   ```
+   git clone https://github.com/arifkyahmad/app_sewa_pesta.git
+   cd app_sewa_pesta
+   ```
+2. Pindah ke branch `dev` (jika `main` belum berisi versi terbaru):
+   ```
+   git checkout dev
+   ```
+3. Install dependency:
+   ```
+   composer install
+   ```
+4. Salin file environment lalu buat app key:
+   ```
+   copy .env.example .env
+   php artisan key:generate
+   ```
+   (Mac/Linux: `cp .env.example .env`)
+5. Buat database kosong bernama `sewa_pesta` di PostgreSQL, lalu isi `DB_PASSWORD` di file `.env` sesuai password PostgreSQL kamu.
+6. Jalankan migration dan seeder:
+   ```
+   php artisan migrate:fresh --seed
+   ```
 
-## Contributing
+## Menjalankan Aplikasi (WAJIB 2 SERVER)
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+Dashboard memanggil API milik aplikasi sendiri. `php artisan serve` hanya melayani satu request dalam satu waktu, jadi diperlukan server kedua agar tidak deadlock. Buka dua terminal:
 
-## Code of Conduct
+```
+php artisan serve --port=8000
+php artisan serve --port=8011
+```
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+- Aplikasi: http://127.0.0.1:8000
+- API internal: http://127.0.0.1:8011/api
 
-## Security Vulnerabilities
+Gunakan `127.0.0.1` di semua tempat, jangan dicampur dengan `localhost`.
+Jika server 8011 mati, halaman lain tetap normal, tetapi dashboard menampilkan angka 0 dan banner peringatan.
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+## Akun Demo
 
-## License
+Password semua akun: `password`
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+| Email | Role |
+|---|---|
+| admin@sewapesta.test | admin |
+| petugas1@sewapesta.test | petugas |
+| petugas2@sewapesta.test | petugas |
+
+## Data Demo
+
+`migrate:fresh --seed` mengisi 3 akun, 5 kategori, 16 barang, 12 pelanggan, dan 5 sewa contoh (sewa berjalan, sewa terlambat, dikembalikan bersih, dikembalikan telat dengan barang rusak dan hilang).
+
+## Aturan Bisnis Singkat
+
+- Lama sewa = tanggal kembali - tanggal sewa (minimal 1 hari)
+- Subtotal = qty x harga satuan x lama sewa
+- Denda = 50% x (total sewa / lama sewa) x hari telat
+- Barang hilang = qty hilang x harga ganti; barang rusak = nominal diisi petugas
+- Sisa bayar = total sewa + denda + ganti rugi - DP
+
+## Dokumentasi API
+
+Lihat [API.md](API.md).
+
+## Troubleshooting
+
+- **419 Page Expired**: terjadi setelah `migrate:fresh` karena sesi terhapus. Tekan Ctrl+F5 di halaman login lalu login ulang.
+- **Dashboard menampilkan angka 0**: pastikan server port 8011 berjalan dan `INTERNAL_API_URL` di `.env` benar. Jalankan `php artisan config:clear` setelah mengubah `.env`.
