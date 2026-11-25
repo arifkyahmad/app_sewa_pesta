@@ -31,8 +31,8 @@ class AuthController extends Controller
 
         $request->session()->regenerate();
 
-        return redirect()->intended(route('rentals.index'))
-            ->with('success', 'Selamat datang, ' . Auth::user()->name . '!');
+        return redirect()
+            ->intended(route('dashboard'))->with('success', 'Selamat datang, ' . Auth::user()->name . '!');
     }
 
     public function logout(Request $request)

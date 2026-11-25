@@ -5,6 +5,7 @@ use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\ItemController;
 use App\Http\Controllers\RentalController;
+use App\Http\Controllers\DashboardController;
 use Illuminate\Support\Facades\Route;
 
 // Publik (belum login)
@@ -15,7 +16,7 @@ Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 // Harus login
 Route::middleware(['auth'])->group(function () {
 
-    Route::get('/', fn () => redirect()->route('rentals.index'));
+    Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
 
     // Khusus admin: kategori + tambah/ubah/hapus barang
     Route::middleware(['admin'])->group(function () {

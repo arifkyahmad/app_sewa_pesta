@@ -13,6 +13,9 @@ return [
     | a conventional file to locate the various service credentials.
     |
     */
+    'internal_api' => [
+        'base_url' => env('INTERNAL_API_URL', 'http://127.0.0.1:8011'),
+    ],
 
     'postmark' => [
         'token' => env('POSTMARK_TOKEN'),

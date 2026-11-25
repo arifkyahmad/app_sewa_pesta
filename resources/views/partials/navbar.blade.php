@@ -1,6 +1,7 @@
 <nav>
     <span class="brand">Sewa Pesta</span>
     <ul>
+        <li><a href="{{ route('dashboard') }}" class="{{ request()->routeIs('dashboard') ? 'active' : '' }}">Dashboard</a></li>
         @if (auth()->user()->role === 'admin')
             <li>
                 <a href="{{ route('categories.index') }}"
