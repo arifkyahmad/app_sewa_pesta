@@ -1,0 +1,431 @@
+﻿<?php
+
+namespace App\Models;
+
+use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Model;
+
+class Rental extends Model
+{
+    // Persentase denda per hari telat, dari sewa per hari
+    public const PERSEN_DENDA = 50;
+
+    protected $fillable = [
+        'customer_id',
+        'user_id',
+        'tanggal_sewa',
+        'tanggal_kembali',
+        'tanggal_dikembalikan',
+        'jaminan_jenis',
+        'total_sewa',
+        'dp',
+        'denda',
+        'total_ganti_rugi',
+        'sisa_bayar',
+        'status',
+    ];
+
+    public function customer()
+    {
+        return $this->belongsTo(Customer::class);
+    }
+
+    public function user()
+    {
+        return $this->belongsTo(User::class);
+    }
+
+    public function rentalItems()
+    {
+        return $this->hasMany(RentalItem::class);
+    }
+
+    // Lama sewa dalam hari, minimal 1
+    public function lamaSewa(): int
+    {
+        return max(1, (int) Carbon::parse($this->tanggal_sewa)
+            ->diffInDays(Carbon::parse($this->tanggal_kembali)));
+    }
+
+    // Denda = persen x sewa per hari x hari telat
+    public function hitungDenda(int $hariTelat): int
+    {
+        $sewaPerHari = intdiv($this->total_sewa, $this->lamaSewa());
+
+        return intdiv($sewaPerHari * self::PERSEN_DENDA * $hariTelat, 100);
+    }
+
+    // Hari telat: dihitung sampai tanggal dikembalikan, atau sampai hari ini kalau belum dikembalikan
+    public function hariTelat(): int
+    {
+        $akhir = $this->tanggal_dikembalikan
+            ? Carbon::parse($this->tanggal_dikembalikan)
+            : Carbon::today();
+
+        return max(0, (int) Carbon::parse($this->tanggal_kembali)->diffInDays($akhir, false));
+    }
+
+    // Terlambat = belum dikembalikan dan sudah lewat tanggal janji
+    public function isTerlambat(): bool
+    {
+        return $this->status === 'disewa' && $this->hariTelat() > 0;
+    }
+
+    // Link WhatsApp ke pelanggan dengan pesan siap kirim
+    public function linkWhatsapp(): string
+    {
+        $pesan = "Halo {$this->customer->nama}, sewa perlengkapan pesta Anda (nota #{$this->id}) "
+            . "seharusnya dikembalikan pada {$this->tanggal_kembali}. "
+            . "Saat ini sudah telat {$this->hariTelat()} hari. "
+            . "Mohon segera dikembalikan. Terima kasih.";
+
+        return 'https://wa.me/' . $this->customer->nomorWhatsapp() . '?text=' . rawurlencode($pesan);
+    }
+}
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Http\Requests\StoreRentalRequest;
+use App\Http\Requests\ReturnRentalRequest;
+use App\Models\Customer;
+use App\Models\Item;
+use App\Models\Rental;
+use App\Models\RentalItem;
+use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
+use Illuminate\Support\Facades\Auth;
+
+class RentalController extends Controller
+{
+        public function index()
+        {
+            $rentals = Rental::with(['customer', 'user'])
+                ->orderByDesc('id')
+                ->paginate(10);
+
+            // Jumlah semua sewa terlambat (bukan hanya di halaman ini)
+            $jumlahTerlambat = Rental::where('status', 'disewa')
+                ->where('tanggal_kembali', '<', Carbon::today()->toDateString())
+                ->count();
+
+            return view('rentals.index', compact('rentals', 'jumlahTerlambat'));
+        }
+
+    public function create()
+    {
+        $customers = Customer::orderBy('nama')->get();
+        $items = Item::with('category')
+            ->where('stok', '>', 0)
+            ->orderBy('nama_barang')
+            ->get();
+
+        return view('rentals.create', compact('customers', 'items'));
+    }
+
+    public function store(StoreRentalRequest $request)
+    {
+        $validated = $request->validated();
+
+        // Ambil hanya barang dengan jumlah > 0 (kunci = id barang, nilai = qty)
+        $qtyPerItem = collect($validated['items'])
+            ->map(fn ($qty) => (int) $qty)
+            ->filter(fn ($qty) => $qty > 0);
+
+        if ($qtyPerItem->isEmpty()) {
+            throw ValidationException::withMessages([
+                'items' => 'Isi jumlah minimal satu barang lebih dari 0.',
+            ]);
+        }
+
+        // Jumlah hari = selisih tanggal, minimal 1
+        $jumlahHari = max(1, (int) Carbon::parse($validated['tanggal_sewa'])
+            ->diffInDays(Carbon::parse($validated['tanggal_kembali'])));
+
+        DB::transaction(function () use ($validated, $qtyPerItem, $jumlahHari) {
+            // Baca stok terbaru dari database
+            $items = Item::whereIn('id', $qtyPerItem->keys()->all())->get()->keyBy('id');
+
+            $baris = [];
+            $totalSewa = 0;
+
+            foreach ($qtyPerItem as $itemId => $qty) {
+                $item = $items->get($itemId);
+
+                if (! $item) {
+                    throw ValidationException::withMessages([
+                        "items.$itemId" => 'Barang tidak ditemukan.',
+                    ]);
+                }
+
+                if ($qty > $item->stok) {
+                    throw ValidationException::withMessages([
+                        "items.$itemId" => "Stok {$item->nama_barang} tidak cukup (tersedia {$item->stok}).",
+                    ]);
+                }
+
+                $subtotal = $qty * $item->harga_sewa * $jumlahHari;
+                $totalSewa += $subtotal;
+
+                $baris[] = [
+                    'item'         => $item,
+                    'qty'          => $qty,
+                    'harga_satuan' => $item->harga_sewa,
+                    'subtotal'     => $subtotal,
+                ];
+            }
+
+            if ($validated['dp'] > $totalSewa) {
+                throw ValidationException::withMessages([
+                    'dp' => 'DP tidak boleh melebihi total sewa (Rp ' . number_format($totalSewa, 0, ',', '.') . ').',
+                ]);
+            }
+
+            // 1. Simpan kepala nota
+            $rental = Rental::create([
+                'customer_id'     => $validated['customer_id'],
+                'user_id'         => Auth::id(), // SEMENTARA, jadi Auth::id() di Tahap 6
+                'tanggal_sewa'    => $validated['tanggal_sewa'],
+                'tanggal_kembali' => $validated['tanggal_kembali'],
+                'jaminan_jenis'   => $validated['jaminan_jenis'],
+                'total_sewa'      => $totalSewa,
+                'dp'              => $validated['dp'],
+            ]);
+
+            foreach ($baris as $b) {
+                // 2. Simpan isi nota
+                $rental->rentalItems()->create([
+                    'item_id'      => $b['item']->id,
+                    'qty'          => $b['qty'],
+                    'harga_satuan' => $b['harga_satuan'],
+                    'subtotal'     => $b['subtotal'],
+                ]);
+
+                // 3. Kurangi stok
+                $b['item']->decrement('stok', $b['qty']);
+            }
+        });
+
+        return redirect()->route('rentals.index')
+            ->with('success', 'Sewa berhasil disimpan.');
+    }
+
+        public function show($id)
+    {
+        $rental = Rental::with(['customer', 'user', 'rentalItems.item'])
+            ->findOrFail($id);
+
+        $jumlahHari = max(1, (int) Carbon::parse($rental->tanggal_sewa)
+            ->diffInDays(Carbon::parse($rental->tanggal_kembali)));
+
+        return view('rentals.show', compact('rental', 'jumlahHari'));
+    }
+    
+    public function formKembali($id)
+    {
+        $rental = Rental::with(['customer', 'rentalItems.item'])->findOrFail($id);
+
+        if ($rental->status === 'dikembalikan') {
+            return redirect()->route('rentals.show', $rental->id)
+                ->with('error', 'Sewa ini sudah dikembalikan.');
+        }
+
+        // Hari telat = hari ini - tanggal kembali, minimal 0
+        $hariTelat = max(0, (int) Carbon::parse($rental->tanggal_kembali)
+            ->diffInDays(Carbon::today(), false));
+
+        $denda = $rental->hitungDenda($hariTelat);
+
+        return view('rentals.return', compact('rental', 'hariTelat', 'denda'));
+    }
+
+        public function kembalikan(ReturnRentalRequest $request, $id)
+    {
+        $input = $request->validated()['items'];
+
+        DB::transaction(function () use ($input, $id) {
+            // Kunci baris sewa supaya klik ganda tidak diproses dua kali
+            $rental = Rental::with('rentalItems.item')->lockForUpdate()->findOrFail($id);
+
+            if ($rental->status === 'dikembalikan') {
+                throw ValidationException::withMessages([
+                    'status' => 'Sewa ini sudah dikembalikan.',
+                ]);
+            }
+
+            // Hari telat dan denda
+            $hariTelat = max(0, (int) Carbon::parse($rental->tanggal_kembali)
+                ->diffInDays(Carbon::today(), false));
+            $denda = $rental->hitungDenda($hariTelat);
+
+            $totalGantiRugi = 0;
+
+            foreach ($rental->rentalItems as $ri) {
+                $baris = $input[$ri->id] ?? null;
+
+                if (! $baris) {
+                    throw ValidationException::withMessages([
+                        'items' => 'Data barang tidak lengkap.',
+                    ]);
+                }
+
+                $rusak   = (int) $baris['qty_rusak'];
+                $hilang  = (int) $baris['qty_hilang'];
+                $nominal = (int) $baris['nominal_rusak'];
+                $nama    = $ri->item->nama_barang;
+
+                if ($rusak + $hilang > $ri->qty) {
+                    throw ValidationException::withMessages([
+                        "items.{$ri->id}" => "{$nama}: jumlah rusak + hilang melebihi jumlah disewa ({$ri->qty}).",
+                    ]);
+                }
+
+                if ($rusak === 0 && $nominal > 0) {
+                    throw ValidationException::withMessages([
+                        "items.{$ri->id}" => "{$nama}: nominal kerusakan diisi, tapi jumlah rusak 0.",
+                    ]);
+                }
+
+                $bagus          = $ri->qty - $rusak - $hilang;
+                $biayaHilang    = $hilang * $ri->item->harga_ganti;
+                $biayaKerusakan = $nominal + $biayaHilang;
+                $totalGantiRugi += $biayaKerusakan;
+
+                // Catat kondisi barang di nota
+                $ri->update([
+                    'qty_rusak'       => $rusak,
+                    'qty_hilang'      => $hilang,
+                    'biaya_kerusakan' => $biayaKerusakan,
+                ]);
+
+                // Kembalikan stok: bagus ke stok, rusak ke stok_rusak, hilang ke stok_hilang
+                $ri->item->increment('stok', $bagus);
+                $ri->item->increment('stok_rusak', $rusak);
+                $ri->item->increment('stok_hilang', $hilang);
+            }
+
+            // Tagihan akhir dan tutup sewa
+            $rental->update([
+                'tanggal_dikembalikan' => Carbon::today()->toDateString(),
+                'denda'                => $denda,
+                'total_ganti_rugi'     => $totalGantiRugi,
+                'sisa_bayar'           => $rental->total_sewa + $denda + $totalGantiRugi - $rental->dp,
+                'status'               => 'dikembalikan',
+            ]);
+        });
+
+        return redirect()->route('rentals.show', $id)
+            ->with('success', 'Pengembalian berhasil disimpan.');
+    }
+
+    public function laporanKerusakan()
+    {
+        // Baris nota yang ada barang rusak atau hilang
+        $adaKerusakan = function ($query) {
+            $query->where('qty_rusak', '>', 0)->orWhere('qty_hilang', '>', 0);
+        };
+
+        $rows = RentalItem::with(['rental.customer', 'item'])
+            ->where($adaKerusakan)
+            ->orderByDesc('rental_id')
+            ->paginate(10);
+
+        // Ringkasan seluruh data, bukan hanya halaman ini
+        $ringkasan = RentalItem::where($adaKerusakan)
+            ->selectRaw('COALESCE(SUM(qty_rusak), 0) as total_rusak, COALESCE(SUM(qty_hilang), 0) as total_hilang, COALESCE(SUM(biaya_kerusakan), 0) as total_biaya')
+            ->first();
+
+        return view('rentals.damage-report', compact('rows', 'ringkasan'));
+    }
+}
+<?php
+
+namespace App\Http\Requests;
+
+use Illuminate\Foundation\Http\FormRequest;
+
+class StoreRentalRequest extends FormRequest
+{
+    public function authorize(): bool
+    {
+        return true;
+    }
+
+    public function rules(): array
+    {
+        return [
+            'customer_id'     => 'required|integer|exists:customers,id',
+            'tanggal_sewa'    => 'required|date',
+            'tanggal_kembali' => 'required|date|after_or_equal:tanggal_sewa',
+            'jaminan_jenis'   => 'required|in:KTP,SIM,lainnya',
+            'dp'              => 'required|integer|min:0',
+            'items'           => 'required|array',
+            'items.*'         => 'required|integer|min:0',
+        ];
+    }
+
+    public function messages(): array
+    {
+        return [
+            'customer_id.required'        => 'Pelanggan wajib dipilih.',
+            'customer_id.integer'         => 'Pelanggan tidak valid.',
+            'customer_id.exists'          => 'Pelanggan tidak valid.',
+            'tanggal_sewa.required'       => 'Tanggal sewa wajib diisi.',
+            'tanggal_sewa.date'           => 'Tanggal sewa tidak valid.',
+            'tanggal_kembali.required'    => 'Tanggal kembali wajib diisi.',
+            'tanggal_kembali.date'        => 'Tanggal kembali tidak valid.',
+            'tanggal_kembali.after_or_equal' => 'Tanggal kembali tidak boleh sebelum tanggal sewa.',
+            'jaminan_jenis.required'      => 'Jaminan wajib dipilih.',
+            'jaminan_jenis.in'            => 'Jenis jaminan tidak valid.',
+            'dp.required'                 => 'DP wajib diisi (isi 0 jika tanpa DP).',
+            'dp.integer'                  => 'DP harus berupa angka bulat.',
+            'dp.min'                      => 'DP tidak boleh negatif.',
+            'items.required'              => 'Pilih minimal satu barang.',
+            'items.array'                 => 'Data barang tidak valid.',
+            'items.*.required'            => 'Jumlah barang wajib diisi (isi 0 jika tidak disewa).',
+            'items.*.integer'             => 'Jumlah barang harus berupa angka bulat.',
+            'items.*.min'                 => 'Jumlah barang tidak boleh negatif.',
+        ];
+    }
+}
+<?php
+
+namespace App\Http\Requests;
+
+use Illuminate\Foundation\Http\FormRequest;
+
+class ReturnRentalRequest extends FormRequest
+{
+    public function authorize(): bool
+    {
+        return true;
+    }
+
+    public function rules(): array
+    {
+        return [
+            'items'                 => 'required|array',
+            'items.*.qty_rusak'     => 'required|integer|min:0',
+            'items.*.qty_hilang'    => 'required|integer|min:0',
+            'items.*.nominal_rusak' => 'required|integer|min:0',
+        ];
+    }
+
+    public function messages(): array
+    {
+        return [
+            'items.required'                 => 'Data barang tidak lengkap.',
+            'items.array'                    => 'Data barang tidak valid.',
+            'items.*.qty_rusak.required'     => 'Jumlah rusak wajib diisi (isi 0 jika tidak ada).',
+            'items.*.qty_rusak.integer'      => 'Jumlah rusak harus berupa angka bulat.',
+            'items.*.qty_rusak.min'          => 'Jumlah rusak tidak boleh negatif.',
+            'items.*.qty_hilang.required'    => 'Jumlah hilang wajib diisi (isi 0 jika tidak ada).',
+            'items.*.qty_hilang.integer'     => 'Jumlah hilang harus berupa angka bulat.',
+            'items.*.qty_hilang.min'         => 'Jumlah hilang tidak boleh negatif.',
+            'items.*.nominal_rusak.required' => 'Nominal kerusakan wajib diisi (isi 0 jika tidak ada).',
+            'items.*.nominal_rusak.integer'  => 'Nominal kerusakan harus berupa angka bulat.',
+            'items.*.nominal_rusak.min'      => 'Nominal kerusakan tidak boleh negatif.',
+        ];
+    }
+}
