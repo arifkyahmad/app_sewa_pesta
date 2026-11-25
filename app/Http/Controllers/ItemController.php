@@ -12,8 +12,9 @@ class ItemController extends Controller
     public function index()
     {
         $items = Item::with('category')
-            ->orderBy('nama_barang')
-            ->paginate(10);
+            ->when(request('search'), fn ($q, $s) => $q->where('nama_barang', 'ilike', "%{$s}%"))
+            ->paginate(10)
+            ->withQueryString();
 
         return view('items.index', compact('items'));
     }

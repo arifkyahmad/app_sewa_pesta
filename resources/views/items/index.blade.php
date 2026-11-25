@@ -5,7 +5,17 @@
 @section('content')
     <h1>Daftar Barang</h1>
 
-    <a href="{{ route('items.create') }}" class="btn">+ Tambah Barang</a>
+    @if (auth()->user()->role === 'admin')
+        <a href="{{ route('items.create') }}" class="btn">Tambah Barang</a>
+    @endif
+
+    <form method="GET" action="{{ route('items.index') }}" style="display:flex; gap:8px; margin:12px 0;">
+        <input type="text" name="search" value="{{ request('search') }}" placeholder="Cari nama barang...">
+        <button type="submit" class="btn">Cari</button>
+        @if (request('search'))
+            <a href="{{ route('items.index') }}">Reset</a>
+        @endif
+    </form>
 
     <table>
         <thead>
@@ -28,18 +38,23 @@
                     <td>{{ $item->stok }}</td>
                     <td>
                         <a href="{{ route('items.show', $item->id) }}" class="btn btn-sm">Detail</a>
-                        <a href="{{ route('items.edit', $item->id) }}" class="btn btn-sm">Edit</a>
-                        <form action="{{ route('items.destroy', $item->id) }}" method="POST" class="inline"
-                            onsubmit="return confirm('Hapus barang ini?')">
-                            @csrf
-                            @method('DELETE')
-                            <button type="submit" class="btn btn-sm btn-danger">Hapus</button>
-                        </form>
+
+                        @if (auth()->user()->role === 'admin')
+                            <a href="{{ route('items.edit', $item->id) }}" class="btn btn-sm">Edit</a>
+                            <form action="{{ route('items.destroy', $item->id) }}" method="POST" class="inline"
+                                onsubmit="return confirm('Hapus barang ini?')">
+                                @csrf
+                                @method('DELETE')
+                                <button type="submit" class="btn btn-sm btn-danger">Hapus</button>
+                            </form>
+                        @endif
                     </td>
                 </tr>
             @empty
                 <tr>
-                    <td colspan="6">Belum ada barang.</td>
+                    <td colspan="6">
+                        {{ request('search') ? 'Barang tidak ditemukan.' : 'Belum ada barang.' }}
+                    </td>
                 </tr>
             @endforelse
         </tbody>

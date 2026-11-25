@@ -10,11 +10,14 @@
 
         /* Navbar */
         nav { background: #1e3a8a; padding: 14px 40px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; }
-        nav .brand { color: #fff; font-weight: bold; font-size: 18px; }
+        nav .brand { color: #fff; font-weight: bold; font-size: 18px; margin-right: 32px; }
         nav ul { list-style: none; display: flex; gap: 20px; margin: 0; padding: 0; }
         nav ul li a { color: #cbd5e1; text-decoration: none; padding: 6px 4px; }
         nav ul li a.active { color: #fff; font-weight: bold; border-bottom: 2px solid #fff; }
         nav svg { max-height: 20px; display: inline-block; }
+        .nav-user { margin-left: auto; display: flex; align-items: center; gap: 10px; color: #fff; font-size: 14px; }
+        .btn-logout { background: #dc2626; color: #fff; border: 0; padding: 6px 12px; border-radius: 4px; cursor: pointer; }
+        .btn-logout:hover { background: #b91c1c; }
 
         /* Konten */
         main { max-width: 900px; margin: 0 auto; padding: 30px 40px; }

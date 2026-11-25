@@ -14,6 +14,8 @@
         <tr><th>Stok Hilang</th><td>{{ $item->stok_hilang }}</td></tr>
     </table>
 
-    <a href="{{ route('items.edit', $item->id) }}" class="btn">Edit</a>
+    @if (auth()->user()->role === 'admin')
+        <a href="{{ route('items.edit', $item->id) }}" class="btn">Edit</a>
+    @endif
     <a href="{{ route('items.index') }}">Kembali ke daftar</a>
 @endsection

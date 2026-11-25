@@ -7,11 +7,11 @@ use App\Http\Requests\ReturnRentalRequest;
 use App\Models\Customer;
 use App\Models\Item;
 use App\Models\Rental;
-use App\Models\User;
 use App\Models\RentalItem;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
+use Illuminate\Support\Facades\Auth;
 
 class RentalController extends Controller
 {
@@ -101,7 +101,7 @@ class RentalController extends Controller
             // 1. Simpan kepala nota
             $rental = Rental::create([
                 'customer_id'     => $validated['customer_id'],
-                'user_id'         => User::query()->value('id'), // SEMENTARA, jadi Auth::id() di Tahap 6
+                'user_id'         => Auth::id(), // SEMENTARA, jadi Auth::id() di Tahap 6
                 'tanggal_sewa'    => $validated['tanggal_sewa'],
                 'tanggal_kembali' => $validated['tanggal_kembali'],
                 'jaminan_jenis'   => $validated['jaminan_jenis'],
