@@ -31,35 +31,6 @@ Transaksi memakai pola header-detail: `rentals` (nota) + `rental_items` (barang 
 
 Pelanggan tidak punya akun. Petugas yang membuka halaman khusus admin akan mendapat 403.
 
-## Cara Instalasi
-
-Prasyarat: PHP >= 8.2, Composer, PostgreSQL, Git.
-
-1. Clone repository:
-   ```
-   git clone https://github.com/arifkyahmad/app_sewa_pesta.git
-   cd app_sewa_pesta
-   ```
-2. Pindah ke branch `dev` (jika `main` belum berisi versi terbaru):
-   ```
-   git checkout dev
-   ```
-3. Install dependency:
-   ```
-   composer install
-   ```
-4. Salin file environment lalu buat app key:
-   ```
-   copy .env.example .env
-   php artisan key:generate
-   ```
-   (Mac/Linux: `cp .env.example .env`)
-5. Buat database kosong bernama `sewa_pesta` di PostgreSQL, lalu isi `DB_PASSWORD` di file `.env` sesuai password PostgreSQL kamu.
-6. Jalankan migration dan seeder:
-   ```
-   php artisan migrate:fresh --seed
-   ```
-
 ## Menjalankan Aplikasi (WAJIB 2 SERVER)
 
 Dashboard memanggil API milik aplikasi sendiri. `php artisan serve` hanya melayani satu request dalam satu waktu, jadi diperlukan server kedua agar tidak deadlock. Buka dua terminal:
